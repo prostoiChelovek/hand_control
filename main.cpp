@@ -18,6 +18,14 @@ using namespace cv;
 Scalar lower = Scalar(0, 135, 90);
 Scalar upper = Scalar(255, 230, 150);
 
+int press_minDistChange = 20;
+int press_maxDistChange = 50;
+int release_minDistChange = 20;
+int release_maxDistChange = 50;
+
+string faceCascadePath = "/data/haarcascade_frontalface_alt.xml";
+Size minFaceSize = Size(70, 70);
+
 void adjustColorRanges(string wName) {
     namedWindow(wName);
     auto onTrackbarActivity = [](int val, void *data) {
@@ -51,16 +59,17 @@ int main() {
 
     hd.shouldCheckAngles = false;
 
+    CascadeClassifier faceCascade;
+    faceCascade.load(faceCascadePath);
+    if (faceCascade.empty())
+        cerr << "Could not load face cascade " << faceCascadePath << endl;
+
     Mat frame, img, img2, mask, bg, imgYCrCb;
     cap >> bg;
 
     adjustColorRanges("Adjust ranges");
 
     int lastDist = 0;
-    int press_minDistChange = 20;
-    int press_maxDistChange = 50;
-    int release_minDistChange = 20;
-    int release_maxDistChange = 50;
 
     while (cap.isOpened()) {
         char key;
@@ -69,6 +78,16 @@ int main() {
         frame.copyTo(img2);
 
         hd.deleteBg(frame, bg, img);
+
+        // remove faces
+        if (!faceCascade.empty()) {
+            vector<Rect> faces;
+            faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, minFaceSize);
+            for (Rect &f : faces) {
+                rectangle(img, f, Scalar(0, 0, 0), CV_FILLED);
+            }
+        }
+
         cvtColor(img, imgYCrCb, COLOR_BGR2YCrCb);
         mask = hd.detectHands_range(imgYCrCb, lower, upper);
 
@@ -105,6 +124,7 @@ int main() {
         }
 
         imshow("img", img2);
+        imshow("no bg", img);
         imshow("mask", mask);
 
         key = waitKey(1);
