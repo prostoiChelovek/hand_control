@@ -18,10 +18,13 @@ using namespace cv;
 Scalar lower = Scalar(0, 135, 90);
 Scalar upper = Scalar(255, 230, 150);
 
-int press_minDistChange = 20;
+int press_minDistChange = 15;
 int press_maxDistChange = 50;
-int release_minDistChange = 20;
+int release_minDistChange = 15;
 int release_maxDistChange = 50;
+int gesture_minDistChange = 35;
+int gestureFrames = 5;
+float gstDelay = 1;
 
 string faceCascadePath = "/data/haarcascade_frontalface_alt.xml";
 Size minFaceSize = Size(70, 70);
@@ -93,9 +96,10 @@ int main() {
     HandDetector hd;
 
     hd.shouldCheckAngles = false;
-    hd.processNoiseCov = Scalar::all(7);
-    hd.measurementNoiseCov = Scalar::all(6e-2);
+    hd.processNoiseCov = Scalar::all(1e-1);
+    hd.measurementNoiseCov = Scalar::all(1e-1);
     hd.errorCovPost = Scalar::all(.3);
+    hd.blurKsize.width = 20;
 
     CascadeClassifier faceCascade;
     faceCascade.load(faceCascadePath);
@@ -104,11 +108,18 @@ int main() {
 
     Mat frame, img, img2, mask, bg, imgYCrCb;
 
-    adjustColorRanges("Adjust ranges");
+    adjustColorRanges("mask");
     namedWindow("img");
     setMouseCallback("img", adjustBox_cb);
 
     int lastDist = 0;
+    int mRightFrs = 0;
+    int mLeftFrs = 0;
+    int mTopFrs = 0;
+    int mBtmFrs = 0;
+    time_t lastGstTime = time(nullptr);
+
+    Filter kf(4, 2, Scalar::all(10), Scalar::all(10), Scalar::all(.3));
 
     cap >> bg;
     flipImg(bg);
@@ -159,6 +170,28 @@ int main() {
                 }
             }
 
+            vector<float> pr = kf.predict();
+            int vX = pr[2];
+            int vY = pr[3];
+            if (vX > gesture_minDistChange) {
+                mRightFrs++;
+                mLeftFrs = 0;
+            } else if (-vX > gesture_minDistChange) {
+                mLeftFrs++;
+                mRightFrs = 0;
+            } else if (vY > gesture_minDistChange) {
+                mBtmFrs++;
+                mTopFrs = 0;
+            } else if (-vY > gesture_minDistChange) {
+                mTopFrs++;
+                mBtmFrs = 0;
+            } else {
+                mRightFrs = 0;
+                mLeftFrs = 0;
+                mBtmFrs = 0;
+                mTopFrs = 0;
+            }
+
             if (should_controlMouse && found) {
                 SysInter::moveMouse((p->x - box.x) * (SysInter::winWidth / box.width),
                                     (p->y - box.y) * (SysInter::winHeight / box.height));
@@ -177,11 +210,47 @@ int main() {
                 }
                 lastDist = dist;
             }
+            if (found) {
+                kf.update(vector<float>{p->x, p->y});
+
+                if (time(nullptr) - lastGstTime >= gstDelay) {
+                    bool gRec = false;
+                    if (mRightFrs > gestureFrames) {
+                        cout << "right" << endl;
+                        mRightFrs = 0;
+                        gRec = true;
+                    }
+                    if (mLeftFrs > gestureFrames) {
+                        cout << "left" << endl;
+                        mLeftFrs = 0;
+                        gRec = true;
+                    }
+                    if (mBtmFrs > gestureFrames) {
+                        cout << "buttom" << endl;
+                        mBtmFrs = 0;
+                        gRec = true;
+                    }
+                    if (mTopFrs > gestureFrames) {
+                        cout << "top" << endl;
+                        mTopFrs = 0;
+                        gRec = true;
+                    }
+                    if (gRec)
+                        lastGstTime = time(nullptr);
+                }
+            } else {
+                mRightFrs = 0;
+                mLeftFrs = 0;
+                mBtmFrs = 0;
+                mTopFrs = 0;
+            }
         }
 
         imshow("img", img2);
         imshow("no bg", img);
         imshow("mask", mask);
+
+        hd.updateLast();
 
         key = waitKey(1);
         if (key != -1) {
