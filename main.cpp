@@ -54,6 +54,7 @@ bool should_click = false;
 bool should_flipVert = true;
 bool should_flipHor = true;
 bool should_adjustBox = false;
+bool should_colorBalance = true;
 
 void flipImg(Mat &img) {
     if (should_flipVert)
@@ -82,6 +83,33 @@ static void adjustBox_cb(int event, int x, int y, int, void *) {
             box.height = y;
             break;
     }
+}
+
+// https://gist.github.com/royshil/1449e22993e98414e9eb
+void SimplestCB(Mat &in, Mat &out, float percent) {
+    assert(in.channels() == 3);
+    assert(percent > 0 && percent < 100);
+
+    float half_percent = percent / 200.0f;
+
+    vector<Mat> tmpsplit;
+    split(in, tmpsplit);
+    for (int i = 0; i < 3; i++) {
+        //find the low and high precentile values (based on the input percentile)
+        Mat flat;
+        tmpsplit[i].reshape(1, 1).copyTo(flat);
+        cv::sort(flat, flat, CV_SORT_EVERY_ROW + CV_SORT_ASCENDING);
+        int lowval = flat.at<uchar>(cvFloor(((float) flat.cols) * half_percent));
+        int highval = flat.at<uchar>(cvCeil(((float) flat.cols) * (1.0 - half_percent)));
+
+        //saturate below the low percentile and above the high percentile
+        tmpsplit[i].setTo(lowval, tmpsplit[i] < lowval);
+        tmpsplit[i].setTo(highval, tmpsplit[i] > highval);
+
+        //scale the channel
+        normalize(tmpsplit[i], tmpsplit[i], 0, 255, NORM_MINMAX);
+    }
+    merge(tmpsplit, out);
 }
 
 int main() {
@@ -126,6 +154,8 @@ int main() {
     while (cap.isOpened()) {
         char key;
         cap >> frame;
+        if (should_colorBalance)
+            SimplestCB(frame, frame, 45);
         flipImg(frame);
         frame.copyTo(img);
         frame.copyTo(img2);
@@ -264,18 +294,28 @@ int main() {
                     break;
                 case 'm':
                     should_controlMouse = !should_controlMouse;
+                    cout << "should " << (should_controlMouse ? "" : "not ") << "control mouse\"" << endl;
                     break;
                 case 'c':
                     should_click = !should_click;
+                    cout << "should " << (should_click ? "" : "not ") << "click" << endl;
                     break;
                 case 'v':
-                    should_flipHor = !should_flipVert;
+                    should_flipVert = !should_flipVert;
+                    cout << "should " << (should_flipVert ? "" : "not ") << "flip vertically" << endl;
                     break;
                 case 'h':
                     should_flipHor = !should_flipHor;
+                    cout << "should " << (should_flipHor ? "" : "not ") << "flip horizontally" << endl;
                     break;
                 case 'o':
                     should_adjustBox = !should_adjustBox;
+                    cout << "should " << (should_adjustBox ? "" : "not ") << "adjust box" << endl;
+                    break;
+                case 'g':
+                    should_colorBalance = !should_colorBalance;
+                    cout << "should " << (should_colorBalance ? "" : "not ") << "color balance" << endl;
+                    break;
                 default:
                     cout << "Key presed: " << key << endl;
                     break;
