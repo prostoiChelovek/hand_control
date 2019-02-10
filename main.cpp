@@ -54,7 +54,7 @@ bool should_click = false;
 bool should_flipVert = true;
 bool should_flipHor = true;
 bool should_adjustBox = false;
-bool should_colorBalance = true;
+bool should_colorBalance = false;
 
 void flipImg(Mat &img) {
     if (should_flipVert)
@@ -149,18 +149,24 @@ int main() {
 
     Filter kf(4, 2, Scalar::all(10), Scalar::all(10), Scalar::all(.3));
 
-    cap >> bg;
-    flipImg(bg);
+    Ptr<BackgroundSubtractorMOG2> bgs = createBackgroundSubtractorMOG2();
+    bgs->setShadowValue(0);
+    bgs->setShadowThreshold(0.01);
+    bool bgs_learn = true;
+    int bgs_learnNFrames = 100;
+
     while (cap.isOpened()) {
         char key;
         cap >> frame;
+
         if (should_colorBalance)
-            SimplestCB(frame, frame, 45);
+            SimplestCB(frame, frame, 10);
+
         flipImg(frame);
         frame.copyTo(img);
         frame.copyTo(img2);
 
-        hd.deleteBg(frame, bg, img);
+        deleteBg(frame, img, bgs, bgs_learn, 127);
 
         // remove faces
         if (!faceCascade.empty()) {
@@ -282,6 +288,13 @@ int main() {
 
         hd.updateLast();
 
+        if (bgs_learnNFrames > 0)
+            bgs_learnNFrames--;
+        else if (bgs_learn) {
+            bgs_learn = false;
+            cout << "Background learned" << endl;
+        }
+
         key = waitKey(1);
         if (key != -1) {
             switch (key) {
@@ -289,8 +302,9 @@ int main() {
                     cout << "Exit" << endl;
                     return EXIT_SUCCESS;
                 case 'b':
-                    frame.copyTo(bg);
-                    cout << "Background captured" << endl;
+                    bgs_learnNFrames = 100;
+                    bgs_learn = true;
+                    cout << "Starting learning background." << endl;
                     break;
                 case 'm':
                     should_controlMouse = !should_controlMouse;
