@@ -36,6 +36,39 @@ namespace SysInter {
         winWidth = DisplayWidth(disp, scr);
     }
 
+    void sendKey(KeySym keysym, KeySym modsym) {
+        KeyCode keycode = 0, modcode = 0;
+        keycode = XKeysymToKeycode(disp, keysym);
+        if (keycode == 0) return;
+        XTestGrabControl(disp, True);
+        /* Generate modkey press */
+        if (modsym != 0) {
+            modcode = XKeysymToKeycode(disp, modsym);
+            XTestFakeKeyEvent(disp, modcode, True, 0);
+        }
+        /* Generate regular key press and release */
+        XTestFakeKeyEvent(disp, keycode, True, 0);
+        XTestFakeKeyEvent(disp, keycode, False, 0);
+
+        /* Generate modkey release */
+        if (modsym != 0)
+            XTestFakeKeyEvent(disp, modcode, False, 0);
+
+        XSync(disp, False);
+        XTestGrabControl(disp, False);
+    }
+
+    void sendLetter(const char *c) {
+        sendKey(XStringToKeysym(c), 0);
+    }
+
+    void sendString(string str) {
+        for (int i = 0; i < str.length(); i++) {
+            string sym(1, str[i]);
+            sendLetter(sym.c_str());
+        }
+    }
+
     void mouseClick(int button = Button1, bool press = true) {
         XTestFakeButtonEvent(disp, button, press, CurrentTime);
     }

@@ -22,7 +22,7 @@ int press_minDistChange = 15;
 int press_maxDistChange = 50;
 int release_minDistChange = 15;
 int release_maxDistChange = 50;
-int gesture_minDistChange = 35;
+int gesture_minDistChange = 45;
 int gestureFrames = 5;
 float gstDelay = 1;
 
@@ -144,7 +144,7 @@ int main() {
     int mRightFrs = 0;
     int mLeftFrs = 0;
     int mTopFrs = 0;
-    int mBtmFrs = 0;
+    int mDownFrs = 0;
     time_t lastGstTime = time(nullptr);
 
     Filter kf(4, 2, Scalar::all(10), Scalar::all(10), Scalar::all(.3));
@@ -216,15 +216,15 @@ int main() {
                 mLeftFrs++;
                 mRightFrs = 0;
             } else if (vY > gesture_minDistChange) {
-                mBtmFrs++;
+                mDownFrs++;
                 mTopFrs = 0;
             } else if (-vY > gesture_minDistChange) {
                 mTopFrs++;
-                mBtmFrs = 0;
+                mDownFrs = 0;
             } else {
                 mRightFrs = 0;
                 mLeftFrs = 0;
-                mBtmFrs = 0;
+                mDownFrs = 0;
                 mTopFrs = 0;
             }
 
@@ -252,21 +252,25 @@ int main() {
                 if (time(nullptr) - lastGstTime >= gstDelay) {
                     bool gRec = false;
                     if (mRightFrs > gestureFrames) {
+                        SysInter::sendKey(XK_Right, 0);
                         cout << "right" << endl;
                         mRightFrs = 0;
                         gRec = true;
                     }
                     if (mLeftFrs > gestureFrames) {
+                        SysInter::sendKey(XK_Left, 0);
                         cout << "left" << endl;
                         mLeftFrs = 0;
                         gRec = true;
                     }
-                    if (mBtmFrs > gestureFrames) {
-                        cout << "buttom" << endl;
-                        mBtmFrs = 0;
+                    if (mDownFrs > gestureFrames) {
+                        SysInter::sendKey(XK_Escape, 0);
+                        cout << "down" << endl;
+                        mDownFrs = 0;
                         gRec = true;
                     }
                     if (mTopFrs > gestureFrames) {
+                        SysInter::sendKey(XK_space, 0);
                         cout << "top" << endl;
                         mTopFrs = 0;
                         gRec = true;
@@ -277,7 +281,7 @@ int main() {
             } else {
                 mRightFrs = 0;
                 mLeftFrs = 0;
-                mBtmFrs = 0;
+                mDownFrs = 0;
                 mTopFrs = 0;
             }
         }
