@@ -22,11 +22,11 @@ int press_minDistChange = 15;
 int press_maxDistChange = 50;
 int release_minDistChange = 15;
 int release_maxDistChange = 50;
-int gesture_minDistChange = 45;
+int gesture_minDistChange = 40;
 int gestureFrames = 5;
 float gstDelay = 1;
 
-string faceCascadePath = "/data/haarcascade_frontalface_alt.xml";
+string faceCascadePath = "/home/prostoichelovek/projects/hand_control/data/haarcascade_frontalface_alt.xml";
 Size minFaceSize = Size(70, 70);
 
 void adjustColorRanges(const string &wName) {
@@ -51,6 +51,7 @@ void adjustColorRanges(const string &wName) {
 
 bool should_controlMouse = false;
 bool should_click = false;
+bool should_recognizeGestures = false;
 bool should_flipVert = true;
 bool should_flipHor = true;
 bool should_adjustBox = false;
@@ -113,7 +114,7 @@ void SimplestCB(Mat &in, Mat &out, float percent) {
 }
 
 int main() {
-    VideoCapture cap(0);
+    VideoCapture cap(1);
     if (!cap.isOpened()) {
         cerr << "Unable to open video capture" << endl;
         return EXIT_FAILURE;
@@ -166,14 +167,14 @@ int main() {
         frame.copyTo(img);
         frame.copyTo(img2);
 
-        deleteBg(frame, img, bgs, bgs_learn, 127);
+        deleteBg(frame, img, bgs, bgs_learn, hd.thresh_sens_val);
 
         // remove faces
         if (!faceCascade.empty()) {
             vector<Rect> faces;
             faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, minFaceSize);
             for (Rect &f : faces) {
-                rectangle(img, f, Scalar(0, 0, 0), CV_FILLED);
+                rectangle(img, Rect(f.x, f.y, f.width, img.rows - f.y), Scalar(0, 0, 0), CV_FILLED);
             }
         }
 
@@ -206,26 +207,28 @@ int main() {
                 }
             }
 
-            vector<float> pr = kf.predict();
-            int vX = pr[2];
-            int vY = pr[3];
-            if (vX > gesture_minDistChange) {
-                mRightFrs++;
-                mLeftFrs = 0;
-            } else if (-vX > gesture_minDistChange) {
-                mLeftFrs++;
-                mRightFrs = 0;
-            } else if (vY > gesture_minDistChange) {
-                mDownFrs++;
-                mTopFrs = 0;
-            } else if (-vY > gesture_minDistChange) {
-                mTopFrs++;
-                mDownFrs = 0;
-            } else {
-                mRightFrs = 0;
-                mLeftFrs = 0;
-                mDownFrs = 0;
-                mTopFrs = 0;
+            if (should_recognizeGestures) {
+                vector<float> pr = kf.predict();
+                int vX = pr[2];
+                int vY = pr[3];
+                if (vX > gesture_minDistChange) {
+                    mRightFrs++;
+                    mLeftFrs = 0;
+                } else if (-vX > gesture_minDistChange) {
+                    mLeftFrs++;
+                    mRightFrs = 0;
+                } else if (vY > gesture_minDistChange) {
+                    mDownFrs++;
+                    mTopFrs = 0;
+                } else if (-vY > gesture_minDistChange) {
+                    mTopFrs++;
+                    mDownFrs = 0;
+                } else {
+                    mRightFrs = 0;
+                    mLeftFrs = 0;
+                    mDownFrs = 0;
+                    mTopFrs = 0;
+                }
             }
 
             if (should_controlMouse && found) {
@@ -312,7 +315,7 @@ int main() {
                     break;
                 case 'm':
                     should_controlMouse = !should_controlMouse;
-                    cout << "should " << (should_controlMouse ? "" : "not ") << "control mouse\"" << endl;
+                    cout << "should " << (should_controlMouse ? "" : "not ") << "control mouse" << endl;
                     break;
                 case 'c':
                     should_click = !should_click;
@@ -330,9 +333,13 @@ int main() {
                     should_adjustBox = !should_adjustBox;
                     cout << "should " << (should_adjustBox ? "" : "not ") << "adjust box" << endl;
                     break;
-                case 'g':
+                case 'l':
                     should_colorBalance = !should_colorBalance;
                     cout << "should " << (should_colorBalance ? "" : "not ") << "color balance" << endl;
+                    break;
+                case 'g':
+                    should_recognizeGestures = !should_recognizeGestures;
+                    cout << "should " << (should_recognizeGestures ? "" : "not ") << "recognize gestures" << endl;
                     break;
                 default:
                     cout << "Key presed: " << key << endl;
