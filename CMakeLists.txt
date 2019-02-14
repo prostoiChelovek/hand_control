@@ -17,9 +17,9 @@ endif ()
 
 set(SOURCE_FILES main.cpp)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-sign-compare")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-sign-compare -Wno-narrowing")
 
-add_executable(mouseControl main.cpp SystemInteraction.hpp)
+add_executable(mouseControl main.cpp SystemInteraction.hpp cvui.h GUI.hpp)
 
 target_link_libraries(mouseControl ${OpenCV_LIBS})
 target_link_libraries(mouseControl ${HandDetector_LIBRARY})

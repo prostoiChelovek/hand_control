@@ -12,6 +12,10 @@
 
 #include "SystemInteraction.hpp"
 
+#include "GUI.hpp"
+#define CVUI_IMPLEMENTATION
+#include "cvui.h"
+
 using namespace std;
 using namespace cv;
 
@@ -22,12 +26,20 @@ int press_minDistChange = 15;
 int press_maxDistChange = 50;
 int release_minDistChange = 15;
 int release_maxDistChange = 50;
-int gesture_minDistChange = 40;
+int gesture_minDistChange = 35;
 int gestureFrames = 5;
 float gstDelay = 1;
 
 string faceCascadePath = "/home/prostoichelovek/projects/hand_control/data/haarcascade_frontalface_alt.xml";
 Size minFaceSize = Size(70, 70);
+
+bool should_flipVert = true;
+bool should_flipHor = true;
+bool should_adjustBox = false;
+bool should_colorBalance = false;
+bool should_controlMouse = false;
+bool should_click = false;
+bool should_recognizeGestures = false;
 
 void adjustColorRanges(const string &wName) {
     namedWindow(wName);
@@ -48,14 +60,6 @@ void adjustColorRanges(const string &wName) {
     int YMaxVal = upper.val[2];
     createTrackbar("YMax", wName, &YMaxVal, 255, onTrackbarActivity, &upper.val[2]);
 }
-
-bool should_controlMouse = false;
-bool should_click = false;
-bool should_recognizeGestures = false;
-bool should_flipVert = true;
-bool should_flipHor = true;
-bool should_adjustBox = false;
-bool should_colorBalance = false;
 
 void flipImg(Mat &img) {
     if (should_flipVert)
@@ -114,7 +118,7 @@ void SimplestCB(Mat &in, Mat &out, float percent) {
 }
 
 int main() {
-    VideoCapture cap(1);
+    VideoCapture cap(0);
     if (!cap.isOpened()) {
         cerr << "Unable to open video capture" << endl;
         return EXIT_FAILURE;
@@ -124,18 +128,24 @@ int main() {
 
     HandDetector hd;
 
-    hd.shouldCheckAngles = false;
+    hd.shouldCheckAngles = true;
+    hd.shouldGetLast = false;
     hd.processNoiseCov = Scalar::all(1e-1);
     hd.measurementNoiseCov = Scalar::all(1e-1);
     hd.errorCovPost = Scalar::all(.3);
-    hd.blurKsize.width = 20;
+    hd.blurKsize.width = 15;
 
     CascadeClassifier faceCascade;
     faceCascade.load(faceCascadePath);
     if (faceCascade.empty())
         cerr << "Could not load face cascade " << faceCascadePath << endl;
 
-    Mat frame, img, img2, mask, bg, imgYCrCb;
+    GUI::init(&press_minDistChange, &press_maxDistChange, &release_minDistChange,
+              &release_maxDistChange, &gesture_minDistChange, &gestureFrames,
+              &gstDelay, &should_controlMouse, &should_click,
+              &should_recognizeGestures);
+
+    Mat frame, img, img2, mask, imgYCrCb;
 
     adjustColorRanges("mask");
     namedWindow("img");
@@ -157,7 +167,7 @@ int main() {
     int bgs_learnNFrames = 100;
 
     while (cap.isOpened()) {
-        char key;
+        char key = -1;
         cap >> frame;
 
         if (should_colorBalance)
@@ -180,14 +190,12 @@ int main() {
 
         cvtColor(img, imgYCrCb, COLOR_BGR2YCrCb);
         mask = hd.detectHands_range(imgYCrCb, lower, upper);
-
         hd.getFingers();
 
         hd.initFilters();
         hd.updateFilters();
         hd.stabilize();
 
-        hd.getCenters();
         hd.getHigherFingers();
         hd.getFarthestFingers();
 
@@ -289,6 +297,8 @@ int main() {
             }
         }
 
+        GUI::displaySettingsGUI(hd, key);
+
         imshow("img", img2);
         imshow("no bg", img);
         imshow("mask", mask);
@@ -301,8 +311,8 @@ int main() {
             bgs_learn = false;
             cout << "Background learned" << endl;
         }
-
-        key = waitKey(1);
+        if (key == -1)
+            key = waitKey(1);
         if (key != -1) {
             switch (key) {
                 case 'q':
