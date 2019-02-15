@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <future>
+#include <map>
 
 #include <opencv2/opencv.hpp>
 
@@ -44,17 +45,18 @@ Settings setts = {
         should_flipHor: true,
         should_adjustBox: false,
         should_colorBalance: false,
+        should_removeFaces: true,
         should_controlMouse: false,
         should_click: false,
-        should_recognizeGestures: false
-};
+        should_recognizeGestures: false,
 
-void flipImg(Mat &img) {
-    if (setts.should_flipVert)
-        flip(img, img, 0);
-    if (setts.should_flipHor)
-        flip(img, img, 1);
-}
+        gstCmds: map<GestureDir, string>{
+                {RIGHT, "xdotool key Right"},
+                {LEFT,  "xdotool key Left"},
+                {UP,    "xdotool key space"},
+                {DOWN,  "xdotool key Escape"}
+        }
+};
 
 Rect box;
 bool mbtnDown = false;
@@ -102,6 +104,35 @@ void SimplestCB(Mat &in, Mat &out, float percent) {
         normalize(tmpsplit[i], tmpsplit[i], 0, 255, NORM_MINMAX);
     }
     merge(tmpsplit, out);
+}
+
+void processGesture(GestureDir gd) {
+    if (setts.gstCmds.count(gd) == 1) {
+        system((setts.gstCmds[gd] + " &").c_str());
+    }
+
+    switch (gd) {
+        case RIGHT:
+            cout << "Right" << endl;
+            break;
+        case LEFT:
+            cout << "Left" << endl;
+            break;
+        case UP:
+            cout << "Up" << endl;
+            break;
+        case DOWN:
+            cout << "Down" << endl;
+            break;
+    };
+
+}
+
+void flipImg(Mat &img) {
+    if (setts.should_flipVert)
+        flip(img, img, 0);
+    if (setts.should_flipHor)
+        flip(img, img, 1);
 }
 
 int main() {
@@ -164,7 +195,7 @@ int main() {
         deleteBg(frame, img, bgs, bgs_learn, hd.thresh_sens_val);
 
         // remove faces
-        if (!faceCascade.empty()) {
+        if (!faceCascade.empty() && setts.should_removeFaces) {
             vector<Rect> faces;
             faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, setts.minFaceSize);
             for (Rect &f : faces) {
@@ -205,75 +236,55 @@ int main() {
                 int vY = pr[3];
                 if (vX > setts.gesture_minDistChange) {
                     mRightFrs++;
-                    mLeftFrs = 0;
                 } else if (-vX > setts.gesture_minDistChange) {
                     mLeftFrs++;
-                    mRightFrs = 0;
                 } else if (vY > setts.gesture_minDistChange) {
                     mDownFrs++;
-                    mTopFrs = 0;
                 } else if (-vY > setts.gesture_minDistChange) {
                     mTopFrs++;
-                    mDownFrs = 0;
                 }
             }
 
-            if (setts.should_controlMouse && found) {
-                Point prb(p->x - box.x, p->y - box.y);
-                SysInter::moveMouse(prb.x * (SysInter::winWidth / box.width) * setts.mouseSpeedX,
-                                    prb.y * (SysInter::winHeight / box.height) * setts.mouseSpeedY);
-            }
-
-            if (setts.should_click && found) {
-                int dist = (h->border.x + h->border.width) - p->x;
-                int distChange = lastDist - dist;
-                if (distChange >= setts.press_minDistChange && distChange <= setts.press_maxDistChange) {
-                    SysInter::mouseClick(Button1, true);
-                    cout << distChange << " press" << endl;
-                }
-                if (-distChange >= setts.release_minDistChange && -distChange <= setts.release_maxDistChange) {
-                    SysInter::mouseClick(Button1, false);
-                    cout << distChange << " release" << endl;
-                }
-                lastDist = dist;
-            }
             if (found) {
+                if (setts.should_controlMouse) {
+                    Point prb(p->x - box.x, p->y - box.y);
+                    SysInter::moveMouse(prb.x * (SysInter::winWidth / box.width) * setts.mouseSpeedX,
+                                        prb.y * (SysInter::winHeight / box.height) * setts.mouseSpeedY);
+                }
+
+                if (setts.should_click) {
+                    int dist = (h->border.x + h->border.width) - p->x;
+                    int distChange = lastDist - dist;
+                    if (distChange >= setts.press_minDistChange && distChange <= setts.press_maxDistChange) {
+                        SysInter::mouseClick(Button1, true);
+                    }
+                    if (-distChange >= setts.release_minDistChange && -distChange <= setts.release_maxDistChange) {
+                        SysInter::mouseClick(Button1, false);
+                    }
+                    lastDist = dist;
+                }
+
                 kf.update(vector<float>{p->x, p->y});
 
                 if (time(nullptr) - lastGstTime >= setts.gstDelay) {
-                    bool gRec = false;
-                    if (mRightFrs > setts.gestureFrames) {
-                        SysInter::sendKey(XK_Right, 0);
-                        cout << "right" << endl;
-                        mRightFrs = 0;
-                        gRec = true;
-                    }
-                    if (mLeftFrs > setts.gestureFrames) {
-                        SysInter::sendKey(XK_Left, 0);
-                        cout << "left" << endl;
-                        mLeftFrs = 0;
-                        gRec = true;
-                    }
-                    if (mDownFrs > setts.gestureFrames) {
-                        SysInter::sendKey(XK_Escape, 0);
-                        cout << "down" << endl;
-                        mDownFrs = 0;
-                        gRec = true;
-                    }
-                    if (mTopFrs > setts.gestureFrames) {
-                        SysInter::sendKey(XK_space, 0);
-                        cout << "top" << endl;
-                        mTopFrs = 0;
-                        gRec = true;
-                    }
-                    if (gRec)
+                    GestureDir gd = NONE;
+                    if (mRightFrs > setts.gestureFrames)
+                        gd = RIGHT;
+                    if (mLeftFrs > setts.gestureFrames)
+                        gd = LEFT;
+                    if (mDownFrs > setts.gestureFrames)
+                        gd = DOWN;
+                    if (mTopFrs > setts.gestureFrames)
+                        gd = UP;
+                    if (gd != NONE) {
                         lastGstTime = time(nullptr);
+                        processGesture(gd);
+                        mRightFrs = 0;
+                        mLeftFrs = 0;
+                        mDownFrs = 0;
+                        mTopFrs = 0;
+                    }
                 }
-            } else {
-                mRightFrs = 0;
-                mLeftFrs = 0;
-                mDownFrs = 0;
-                mTopFrs = 0;
             }
         }
 

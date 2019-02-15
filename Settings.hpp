@@ -12,6 +12,14 @@
 using namespace std;
 using namespace cv;
 
+enum GestureDir {
+    RIGHT,
+    LEFT,
+    UP,
+    DOWN,
+    NONE
+};
+
 struct Settings {
     Scalar lower, upper;
 
@@ -35,9 +43,12 @@ struct Settings {
     bool should_flipHor;
     bool should_adjustBox;
     bool should_colorBalance;
+    bool should_removeFaces;
     bool should_controlMouse;
     bool should_click;
     bool should_recognizeGestures;
+
+    map<GestureDir, string> gstCmds;
 };
 
 

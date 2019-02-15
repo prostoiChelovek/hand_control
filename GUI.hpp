@@ -98,6 +98,9 @@ namespace GUI {
         cvui::checkbox("Get last fingers", &hd.shouldGetLast);
         cvui::space(2);
 
+        cvui::checkbox("Remove faces", &setts->should_removeFaces);
+        cvui::space(2);
+
         cvui::checkbox("Control mouse", &setts->should_controlMouse);
         cvui::space(2);
 
