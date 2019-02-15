@@ -12,6 +12,8 @@
 
 #include "handDetector/HandDetector.h"
 
+#include "Settings.hpp"
+
 #include "cvui.h"
 
 using namespace std;
@@ -20,29 +22,11 @@ using namespace cv;
 namespace GUI {
     String settingsWName = "Settings";
     int width = 200;
-    Mat settingsWin(650, width * 2 + 60, CV_8UC1);
+    Mat settingsWin(650, width * 3 + 100, CV_8UC1);
+    Settings *setts;
 
-    // sorry for this
-    int *press_minDistChange, *press_maxDistChange, *release_minDistChange,
-            *release_maxDistChange, *gesture_minDistChange, *gestureFrames;
-    float *gstDelay;
-    bool *should_controlMouse, *should_click, *should_recognizeGestures;
-
-    void init(int *press_minDistChange_, int *press_maxDistChange_,
-              int *release_minDistChange_, int *release_maxDistChange_,
-              int *gesture_minDistChange_, int *gestureFrames_,
-              float *gstDelay_, bool *should_controlMouse_, bool *should_click_,
-              bool *should_recognizeGestures_) {
-        press_minDistChange = press_minDistChange_;
-        press_maxDistChange = press_maxDistChange_;
-        release_minDistChange = release_minDistChange_;
-        release_maxDistChange = release_maxDistChange_;
-        gesture_minDistChange = gesture_minDistChange_;
-        gestureFrames = gestureFrames_;
-        gstDelay = gstDelay_;
-        should_controlMouse = should_controlMouse_;
-        should_click = should_click_;
-        should_recognizeGestures = should_recognizeGestures_;
+    void init(Settings *setts_) {
+        setts = setts_;
 
         namedWindow(settingsWName, CV_WINDOW_AUTOSIZE);
         cvui::init(settingsWName);
@@ -66,35 +50,40 @@ namespace GUI {
         cvui::space(5);
 
         cvui::text("Mix distance change for press");
-        cvui::trackbar(width, press_minDistChange, 0, 100);
+        cvui::trackbar(width, &setts->press_minDistChange, 0, 100);
         cvui::space(3);
 
         cvui::text("Max distance change for press");
-        cvui::trackbar(width, press_maxDistChange, *press_minDistChange + 1, 250);
+        cvui::trackbar(width, &setts->press_maxDistChange, setts->press_minDistChange + 1, 250);
         cvui::space(3);
 
         cvui::text("Mix distance change for release");
-        cvui::trackbar(width, release_minDistChange, 0, 100);
+        cvui::trackbar(width, &setts->release_minDistChange, 0, 100);
         cvui::space(3);
 
         cvui::text("Max distance change for press");
-        cvui::trackbar(width, release_maxDistChange, *release_minDistChange + 1, 250);
+        cvui::trackbar(width, &setts->release_maxDistChange, setts->release_minDistChange + 1, 250);
         cvui::space(3);
 
         cvui::text("Mix distance change for gesture");
-        cvui::trackbar(width, gesture_minDistChange, 0, 100);
+        cvui::trackbar(width, &setts->gesture_minDistChange, 0, 100);
         cvui::space(3);
-
         cvui::endColumn();
 
         cvui::beginColumn(settingsWin, width + 50, 20, width, -1, 6);
-
         cvui::text("Frames for gesture");
-        cvui::trackbar(width, gestureFrames, 0, 20);
+        cvui::trackbar(width, &setts->gestureFrames, 0, 20);
         cvui::space(3);
 
         cvui::text("Gesture delay");
-        cvui::trackbar(width, gstDelay, 0.1f, 2.f);
+        cvui::trackbar(width, &setts->gstDelay, 0.1f, 3.f);
+
+        cvui::text("Mouse speed X");
+        cvui::trackbar(width, &setts->mouseSpeedX, .0f, 10.f);
+        cvui::space(3);
+
+        cvui::text("Mouse speed Y");
+        cvui::trackbar(width, &setts->mouseSpeedY, .0f, 10.f);
         cvui::space(5);
 
         cvui::checkbox("Blur", &hd.shouldBlur);
@@ -109,20 +98,22 @@ namespace GUI {
         cvui::checkbox("Get last fingers", &hd.shouldGetLast);
         cvui::space(2);
 
-        cvui::checkbox("Control mouse", should_controlMouse);
+        cvui::checkbox("Control mouse", &setts->should_controlMouse);
         cvui::space(2);
 
-        cvui::checkbox("Click", should_click);
+        cvui::checkbox("Click", &setts->should_click);
         cvui::space(2);
 
-        cvui::checkbox("Recognize gestures", should_recognizeGestures);
+        cvui::checkbox("Recognize gestures", &setts->should_recognizeGestures);
         cvui::space(5);
+        cvui::endColumn();
 
+        cvui::beginColumn(settingsWin, (width + 50) * 2, 20, width, -1, 6);
         if (cvui::button("Exit (q)"))
             key = 'q';
         if (cvui::button("Change background (b)"))
             key = 'b';
-        if (cvui::button("Adjust box"))
+        if (cvui::button("Adjust box (o)"))
             key = 'o';
         if (cvui::button("Flip horizontally (h)"))
             key = 'h';
@@ -132,6 +123,26 @@ namespace GUI {
 
         cvui::update();
         cv::imshow(settingsWName, settingsWin);
+    }
+
+    void adjustColorRanges(const string &wName) {
+        namedWindow(wName);
+        auto onTrackbarActivity = [](int val, void *data) {
+            double &vNum = *(static_cast<double *>(data));
+            vNum = val;
+        };
+        int CrMinVal = setts->lower.val[0];
+        createTrackbar("CrMin", wName, &CrMinVal, 255, onTrackbarActivity, &setts->lower.val[0]);
+        int CrMaxVal = setts->upper.val[0];
+        createTrackbar("CrMax", wName, &CrMaxVal, 255, onTrackbarActivity, &setts->upper.val[0]);
+        int CbMinVal = setts->lower.val[1];
+        createTrackbar("CbMin", wName, &CbMinVal, 255, onTrackbarActivity, &setts->lower.val[1]);
+        int CbMaxVal = setts->upper.val[1];
+        createTrackbar("CbMax", wName, &CbMaxVal, 255, onTrackbarActivity, &setts->upper.val[1]);
+        int YMinVal = setts->lower.val[2];
+        createTrackbar("YMin", wName, &YMinVal, 255, onTrackbarActivity, &setts->lower.val[2]);
+        int YMaxVal = setts->upper.val[2];
+        createTrackbar("YMax", wName, &YMaxVal, 255, onTrackbarActivity, &setts->upper.val[2]);
     }
 
 }

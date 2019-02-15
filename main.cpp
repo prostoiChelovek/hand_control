@@ -12,67 +12,54 @@
 
 #include "SystemInteraction.hpp"
 
+#include "Settings.hpp"
+
 #include "GUI.hpp"
 #define CVUI_IMPLEMENTATION
-#include "cvui.h"
 
 using namespace std;
 using namespace cv;
 
-Scalar lower = Scalar(0, 135, 90);
-Scalar upper = Scalar(255, 230, 150);
+Settings setts = {
+        lower: Scalar(0, 135, 90),
+        upper: Scalar(255, 230, 150),
 
-int press_minDistChange = 15;
-int press_maxDistChange = 50;
-int release_minDistChange = 15;
-int release_maxDistChange = 50;
-int gesture_minDistChange = 35;
-int gestureFrames = 5;
-float gstDelay = 1;
+        press_minDistChange: 15,
+        press_maxDistChange: 50,
 
-string faceCascadePath = "/home/prostoichelovek/projects/hand_control/data/haarcascade_frontalface_alt.xml";
-Size minFaceSize = Size(70, 70);
+        release_minDistChange: 15,
+        release_maxDistChange: 50,
 
-bool should_flipVert = true;
-bool should_flipHor = true;
-bool should_adjustBox = false;
-bool should_colorBalance = false;
-bool should_controlMouse = false;
-bool should_click = false;
-bool should_recognizeGestures = false;
+        gesture_minDistChange: 35,
+        gestureFrames: 5,
+        gstDelay: 1,
 
-void adjustColorRanges(const string &wName) {
-    namedWindow(wName);
-    auto onTrackbarActivity = [](int val, void *data) {
-        double &vNum = *(static_cast<double *>(data));
-        vNum = double(val);
-    };
-    int CrMinVal = lower.val[0];
-    createTrackbar("CrMin", wName, &CrMinVal, 255, onTrackbarActivity, &lower.val[0]);
-    int CrMaxVal = upper.val[0];
-    createTrackbar("CrMax", wName, &CrMaxVal, 255, onTrackbarActivity, &upper.val[0]);
-    int CbMinVal = lower.val[1];
-    createTrackbar("CbMin", wName, &CbMinVal, 255, onTrackbarActivity, &lower.val[1]);
-    int CbMaxVal = upper.val[1];
-    createTrackbar("CbMax", wName, &CbMaxVal, 255, onTrackbarActivity, &upper.val[1]);
-    int YMinVal = lower.val[2];
-    createTrackbar("YMin", wName, &YMinVal, 255, onTrackbarActivity, &lower.val[2]);
-    int YMaxVal = upper.val[2];
-    createTrackbar("YMax", wName, &YMaxVal, 255, onTrackbarActivity, &upper.val[2]);
-}
+        mouseSpeedX: 2,
+        mouseSpeedY: 3,
+
+        faceCascadePath: "../data/haarcascade_frontalface_alt.xml",
+        minFaceSize: Size(70, 70),
+
+        should_flipVert: true,
+        should_flipHor: true,
+        should_adjustBox: false,
+        should_colorBalance: false,
+        should_controlMouse: false,
+        should_click: false,
+        should_recognizeGestures: false
+};
 
 void flipImg(Mat &img) {
-    if (should_flipVert)
+    if (setts.should_flipVert)
         flip(img, img, 0);
-    if (should_flipHor)
+    if (setts.should_flipHor)
         flip(img, img, 1);
 }
 
 Rect box;
 bool mbtnDown = false;
-
 static void adjustBox_cb(int event, int x, int y, int, void *) {
-    if (!should_adjustBox) return;
+    if (!setts.should_adjustBox) return;
     switch (event) {
         case CV_EVENT_LBUTTONDOWN:
             box.x = x;
@@ -136,18 +123,15 @@ int main() {
     hd.blurKsize.width = 15;
 
     CascadeClassifier faceCascade;
-    faceCascade.load(faceCascadePath);
+    faceCascade.load(setts.faceCascadePath);
     if (faceCascade.empty())
-        cerr << "Could not load face cascade " << faceCascadePath << endl;
+        cerr << "Could not load face cascade " << setts.faceCascadePath << endl;
 
-    GUI::init(&press_minDistChange, &press_maxDistChange, &release_minDistChange,
-              &release_maxDistChange, &gesture_minDistChange, &gestureFrames,
-              &gstDelay, &should_controlMouse, &should_click,
-              &should_recognizeGestures);
+    GUI::init(&setts);
 
     Mat frame, img, img2, mask, imgYCrCb;
 
-    adjustColorRanges("mask");
+    GUI::adjustColorRanges("mask");
     namedWindow("img");
     setMouseCallback("img", adjustBox_cb);
 
@@ -170,7 +154,7 @@ int main() {
         char key = -1;
         cap >> frame;
 
-        if (should_colorBalance)
+        if (setts.should_colorBalance)
             SimplestCB(frame, frame, 10);
 
         flipImg(frame);
@@ -182,14 +166,14 @@ int main() {
         // remove faces
         if (!faceCascade.empty()) {
             vector<Rect> faces;
-            faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, minFaceSize);
+            faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, setts.minFaceSize);
             for (Rect &f : faces) {
                 rectangle(img, Rect(f.x, f.y, f.width, img.rows - f.y), Scalar(0, 0, 0), CV_FILLED);
             }
         }
 
         cvtColor(img, imgYCrCb, COLOR_BGR2YCrCb);
-        mask = hd.detectHands_range(imgYCrCb, lower, upper);
+        mask = hd.detectHands_range(imgYCrCb, setts.lower, setts.upper);
         hd.getFingers();
 
         hd.initFilters();
@@ -215,43 +199,39 @@ int main() {
                 }
             }
 
-            if (should_recognizeGestures) {
+            if (setts.should_recognizeGestures) {
                 vector<float> pr = kf.predict();
                 int vX = pr[2];
                 int vY = pr[3];
-                if (vX > gesture_minDistChange) {
+                if (vX > setts.gesture_minDistChange) {
                     mRightFrs++;
                     mLeftFrs = 0;
-                } else if (-vX > gesture_minDistChange) {
+                } else if (-vX > setts.gesture_minDistChange) {
                     mLeftFrs++;
                     mRightFrs = 0;
-                } else if (vY > gesture_minDistChange) {
+                } else if (vY > setts.gesture_minDistChange) {
                     mDownFrs++;
                     mTopFrs = 0;
-                } else if (-vY > gesture_minDistChange) {
+                } else if (-vY > setts.gesture_minDistChange) {
                     mTopFrs++;
                     mDownFrs = 0;
-                } else {
-                    mRightFrs = 0;
-                    mLeftFrs = 0;
-                    mDownFrs = 0;
-                    mTopFrs = 0;
                 }
             }
 
-            if (should_controlMouse && found) {
-                SysInter::moveMouse((p->x - box.x) * (SysInter::winWidth / box.width),
-                                    (p->y - box.y) * (SysInter::winHeight / box.height));
+            if (setts.should_controlMouse && found) {
+                Point prb(p->x - box.x, p->y - box.y);
+                SysInter::moveMouse(prb.x * (SysInter::winWidth / box.width) * setts.mouseSpeedX,
+                                    prb.y * (SysInter::winHeight / box.height) * setts.mouseSpeedY);
             }
 
-            if (should_click && found) {
+            if (setts.should_click && found) {
                 int dist = (h->border.x + h->border.width) - p->x;
                 int distChange = lastDist - dist;
-                if (distChange >= press_minDistChange && distChange <= press_maxDistChange) {
+                if (distChange >= setts.press_minDistChange && distChange <= setts.press_maxDistChange) {
                     SysInter::mouseClick(Button1, true);
                     cout << distChange << " press" << endl;
                 }
-                if (-distChange >= release_minDistChange && -distChange <= release_maxDistChange) {
+                if (-distChange >= setts.release_minDistChange && -distChange <= setts.release_maxDistChange) {
                     SysInter::mouseClick(Button1, false);
                     cout << distChange << " release" << endl;
                 }
@@ -260,27 +240,27 @@ int main() {
             if (found) {
                 kf.update(vector<float>{p->x, p->y});
 
-                if (time(nullptr) - lastGstTime >= gstDelay) {
+                if (time(nullptr) - lastGstTime >= setts.gstDelay) {
                     bool gRec = false;
-                    if (mRightFrs > gestureFrames) {
+                    if (mRightFrs > setts.gestureFrames) {
                         SysInter::sendKey(XK_Right, 0);
                         cout << "right" << endl;
                         mRightFrs = 0;
                         gRec = true;
                     }
-                    if (mLeftFrs > gestureFrames) {
+                    if (mLeftFrs > setts.gestureFrames) {
                         SysInter::sendKey(XK_Left, 0);
                         cout << "left" << endl;
                         mLeftFrs = 0;
                         gRec = true;
                     }
-                    if (mDownFrs > gestureFrames) {
+                    if (mDownFrs > setts.gestureFrames) {
                         SysInter::sendKey(XK_Escape, 0);
                         cout << "down" << endl;
                         mDownFrs = 0;
                         gRec = true;
                     }
-                    if (mTopFrs > gestureFrames) {
+                    if (mTopFrs > setts.gestureFrames) {
                         SysInter::sendKey(XK_space, 0);
                         cout << "top" << endl;
                         mTopFrs = 0;
@@ -324,32 +304,32 @@ int main() {
                     cout << "Starting learning background." << endl;
                     break;
                 case 'm':
-                    should_controlMouse = !should_controlMouse;
-                    cout << "should " << (should_controlMouse ? "" : "not ") << "control mouse" << endl;
+                    setts.should_controlMouse = !setts.should_controlMouse;
+                    cout << "should " << (setts.should_controlMouse ? "" : "not ") << "control mouse" << endl;
                     break;
                 case 'c':
-                    should_click = !should_click;
-                    cout << "should " << (should_click ? "" : "not ") << "click" << endl;
+                    setts.should_click = !setts.should_click;
+                    cout << "should " << (setts.should_click ? "" : "not ") << "click" << endl;
                     break;
                 case 'v':
-                    should_flipVert = !should_flipVert;
-                    cout << "should " << (should_flipVert ? "" : "not ") << "flip vertically" << endl;
+                    setts.should_flipVert = !setts.should_flipVert;
+                    cout << "should " << (setts.should_flipVert ? "" : "not ") << "flip vertically" << endl;
                     break;
                 case 'h':
-                    should_flipHor = !should_flipHor;
-                    cout << "should " << (should_flipHor ? "" : "not ") << "flip horizontally" << endl;
+                    setts.should_flipHor = !setts.should_flipHor;
+                    cout << "should " << (setts.should_flipHor ? "" : "not ") << "flip horizontally" << endl;
                     break;
                 case 'o':
-                    should_adjustBox = !should_adjustBox;
-                    cout << "should " << (should_adjustBox ? "" : "not ") << "adjust box" << endl;
+                    setts.should_adjustBox = !setts.should_adjustBox;
+                    cout << "should " << (setts.should_adjustBox ? "" : "not ") << "adjust box" << endl;
                     break;
                 case 'l':
-                    should_colorBalance = !should_colorBalance;
-                    cout << "should " << (should_colorBalance ? "" : "not ") << "color balance" << endl;
+                    setts.should_colorBalance = !setts.should_colorBalance;
+                    cout << "should " << (setts.should_colorBalance ? "" : "not ") << "color balance" << endl;
                     break;
                 case 'g':
-                    should_recognizeGestures = !should_recognizeGestures;
-                    cout << "should " << (should_recognizeGestures ? "" : "not ") << "recognize gestures" << endl;
+                    setts.should_recognizeGestures = !setts.should_recognizeGestures;
+                    cout << "should " << (setts.should_recognizeGestures ? "" : "not ") << "recognize gestures" << endl;
                     break;
                 default:
                     cout << "Key presed: " << key << endl;
