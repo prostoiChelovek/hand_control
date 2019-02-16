@@ -34,7 +34,12 @@ Settings setts = {
         release_minDistChange: 15,
         release_maxDistChange: 50,
 
-        gesture_minDistChange: 35,
+        gestureSpeeds: map<GestureDir, int>{
+                {RIGHT, 35},
+                {LEFT,  35},
+                {UP,    30},
+                {DOWN,  25}
+        },
         gestureFrames: 5,
         gstDelay: 1,
 
@@ -53,7 +58,7 @@ Settings setts = {
         should_click: false,
         should_recognizeGestures: false,
         should_adjustDstCh: false,
-
+        should_adjustGstSpeed: false,
 
         gstCmds: map<GestureDir, string>{
                 {RIGHT, "xdotool key Right"},
@@ -130,10 +135,8 @@ void autoAdjDstCh(vector<int> &dists) {
     }
     vector<int> posMaxs, posMins, negMaxs, negMins;
     for (vector<int> &seq : seqs) {
-        if (seq.empty()) {
-            seqs.erase(remove(seqs.begin(), seqs.end(), seq), seqs.end());
+        if (seq.empty())
             continue;
-        }
 
         int maxEl = *max_element(seq.begin(), seq.end());
         int minEl = *min_element(seq.begin(), seq.end());
@@ -160,25 +163,53 @@ void autoAdjDstCh(vector<int> &dists) {
     setts.should_adjustDstCh = false;
 }
 
+void autoAdjGstSpeeds(vector<Vec2i> &speeds, GestureDir &currentGst) {
+    vector<vector<int>> seqs;
+    for (auto s = speeds.begin() + 2; s < speeds.end(); s++) {
+        int v = 0;
+        if (currentGst == RIGHT || currentGst == LEFT)
+            v = (*s)[0];
+        else
+            v = (*s)[1];
+        if ((currentGst == RIGHT || currentGst == DOWN) && v < 0)
+            continue;
+        if ((currentGst == LEFT || currentGst == UP) && v > 0)
+            continue;
+        if (v >= -18 && v <= 18) {
+            seqs.emplace_back(vector<int>{});
+            continue;
+        }
+        if (!seqs.empty())
+            seqs[seqs.size() - 1].emplace_back(v);
+    }
+
+    vector<int> mins;
+    for (vector<int> &seq : seqs) {
+        if (seq.empty())
+            continue;
+        int minEl = *min_element(seq.begin(), seq.end());
+        mins.emplace_back(minEl);
+    }
+    int minAvg = accumulate(mins.begin(), mins.end(), 0.0) / mins.size();
+    cout << minAvg << endl;
+    setts.gestureSpeeds[currentGst] = abs(minAvg);
+
+    speeds.clear();
+    currentGst = GestureDir((int) currentGst + 1);
+    if (currentGst == NONE) {
+        setts.should_adjustGstSpeed = false;
+        currentGst = RIGHT;
+        cout << "Gestures was adjusted!" << endl;
+    } else {
+        cout << "Now: " << gesture2str(currentGst) << endl;
+    }
+}
+
 void processGesture(GestureDir gd) {
     if (setts.gstCmds.count(gd) == 1) {
         system((setts.gstCmds[gd] + " &").c_str());
     }
-
-    switch (gd) {
-        case RIGHT:
-            cout << "Right" << endl;
-            break;
-        case LEFT:
-            cout << "Left" << endl;
-            break;
-        case UP:
-            cout << "Up" << endl;
-            break;
-        case DOWN:
-            cout << "Down" << endl;
-            break;
-    };
+    cout << gesture2str(gd) << endl;
 }
 
 int main(int argc, char **argv) {
@@ -219,10 +250,14 @@ int main(int argc, char **argv) {
     int lastDist = 0;
     int mRightFrs = 0;
     int mLeftFrs = 0;
-    int mTopFrs = 0;
+    int mUpFrs = 0;
     int mDownFrs = 0;
-    vector<int> dists;
     time_t lastGstTime = time(nullptr);
+
+    vector<int> dists;
+    vector<Vec2i> speeds;
+    GestureDir currentGst = RIGHT;
+
 
     Filter kf(4, 2, Scalar::all(10), Scalar::all(10), Scalar::all(.3));
 
@@ -281,41 +316,48 @@ int main(int argc, char **argv) {
                 }
             }
 
-            vector<float> pr = kf.predict();
-            int vX = pr[2];
-            int vY = pr[3];
+
             if (setts.should_recognizeGestures) {
-                if (vX > setts.gesture_minDistChange) {
+                vector<float> pr = kf.predict();
+                int vX = pr[2];
+                int vY = pr[3];
+                if (vX > setts.gestureSpeeds[RIGHT]) {
                     mRightFrs++;
-                } else if (-vX > setts.gesture_minDistChange) {
+                } else if (-vX > setts.gestureSpeeds[LEFT]) {
                     mLeftFrs++;
-                } else if (vY > setts.gesture_minDistChange) {
+                } else if (vY > setts.gestureSpeeds[DOWN]) {
                     mDownFrs++;
-                } else if (-vY > setts.gesture_minDistChange) {
-                    mTopFrs++;
+                } else if (-vY > setts.gestureSpeeds[UP]) {
+                    mUpFrs++;
                 }
+                if (setts.should_adjustGstSpeed)
+                    speeds.emplace_back(vX, vY);
             }
 
             if (found) {
-                if (setts.should_controlMouse) {
-                    Point prb(p->x - box.x, p->y - box.y);
-                    SysInter::moveMouse(prb.x * (SysInter::winWidth / box.width) * setts.mouseSpeedX,
-                                        prb.y * (SysInter::winHeight / box.height) * setts.mouseSpeedY);
-                }
-
+                bool clicked = false;
                 if (setts.should_click) {
                     int dist = (h->border.x + h->border.width) - p->x;
                     int distChange = lastDist - dist;
+
                     if (setts.should_adjustDstCh)
                         dists.emplace_back(distChange);
 
                     if (distChange >= setts.press_minDistChange && distChange <= setts.press_maxDistChange) {
                         SysInter::mouseClick(Button1, true);
+                        clicked = true;
                     }
                     if (-distChange >= setts.release_minDistChange && -distChange <= setts.release_maxDistChange) {
                         SysInter::mouseClick(Button1, false);
+                        clicked = true;
                     }
                     lastDist = dist;
+                }
+
+                if (setts.should_controlMouse && !clicked) {
+                    Point prb(p->x - box.x, p->y - box.y);
+                    SysInter::moveMouse(prb.x * (SysInter::winWidth / box.width) * setts.mouseSpeedX,
+                                        prb.y * (SysInter::winHeight / box.height) * setts.mouseSpeedY);
                 }
 
                 kf.update(vector<float>{p->x, p->y});
@@ -328,7 +370,7 @@ int main(int argc, char **argv) {
                         gd = LEFT;
                     if (mDownFrs > setts.gestureFrames)
                         gd = DOWN;
-                    if (mTopFrs > setts.gestureFrames)
+                    if (mUpFrs > setts.gestureFrames)
                         gd = UP;
                     if (gd != NONE) {
                         lastGstTime = time(nullptr);
@@ -336,13 +378,13 @@ int main(int argc, char **argv) {
                         mRightFrs = 0;
                         mLeftFrs = 0;
                         mDownFrs = 0;
-                        mTopFrs = 0;
+                        mUpFrs = 0;
                     }
                 }
             }
         }
 
-        GUI::displaySettingsGUI(hd, key);
+        GUI::displaySettingsGUI(hd, key, currentGst);
 
         imshow("img", img2);
         imshow("no bg", img);
@@ -352,6 +394,9 @@ int main(int argc, char **argv) {
 
         if (dists.size() > 200) {
             autoAdjDstCh(dists);
+        }
+        if (speeds.size() > 300) {
+            autoAdjGstSpeeds(speeds, currentGst);
         }
 
         if (bgs_learnNFrames > 0)
@@ -404,6 +449,10 @@ int main(int argc, char **argv) {
                 case 'a':
                     setts.should_adjustDstCh = !setts.should_adjustDstCh;
                     cout << "Auto adjust click dist change: " << setts.should_adjustDstCh << endl;
+                    break;
+                case 'd':
+                    setts.should_adjustGstSpeed = !setts.should_adjustGstSpeed;
+                    cout << "Auto adjust gesture speed: " << setts.should_adjustGstSpeed << endl;
                     break;
                 default:
                     cout << "Key presed: " << key << endl;

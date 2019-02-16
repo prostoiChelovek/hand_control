@@ -32,7 +32,7 @@ namespace GUI {
         cvui::init(settingsWName);
     }
 
-    void displaySettingsGUI(HandDetector &hd, char &key) {
+    void displaySettingsGUI(HandDetector &hd, char &key, GestureDir &currentGst) {
         cvui::context(settingsWName);
         settingsWin = Scalar(49, 52, 49);
         cvui::beginColumn(settingsWin, 20, 20, width, -1, 6);
@@ -51,7 +51,7 @@ namespace GUI {
 
         cvui::text("Mix distance change for press");
         cvui::trackbar(width, &setts->press_minDistChange, 0, 100);
-        cvui::space(3);
+        cvui::space(2);
 
         cvui::text("Max distance change for press");
         cvui::trackbar(width, &setts->press_maxDistChange, setts->press_minDistChange + 1, 250);
@@ -59,20 +59,27 @@ namespace GUI {
 
         cvui::text("Mix distance change for release");
         cvui::trackbar(width, &setts->release_minDistChange, 0, 100);
-        cvui::space(3);
+        cvui::space(2);
 
         cvui::text("Max distance change for press");
         cvui::trackbar(width, &setts->release_maxDistChange, setts->release_minDistChange + 1, 250);
         cvui::space(3);
 
-        cvui::text("Mix distance change for gesture");
-        cvui::trackbar(width, &setts->gesture_minDistChange, 0, 100);
+        cvui::text("Frames for gesture");
+        cvui::trackbar(width, &setts->gestureFrames, 0, 20);
         cvui::space(3);
         cvui::endColumn();
 
         cvui::beginColumn(settingsWin, width + 50, 20, width, -1, 6);
-        cvui::text("Frames for gesture");
-        cvui::trackbar(width, &setts->gestureFrames, 0, 20);
+        cvui::text("Min speed for");
+        cvui::beginRow();
+        if (cvui::button(40, 46, gesture2str(currentGst))) {
+            currentGst = GestureDir((int) currentGst + 1);
+            if (currentGst == NONE)
+                currentGst = RIGHT;
+        }
+        cvui::trackbar(width - 40, &setts->gestureSpeeds[currentGst], 0, 250);
+        cvui::endRow();
         cvui::space(3);
 
         cvui::text("Gesture delay");
@@ -108,9 +115,6 @@ namespace GUI {
         cvui::space(2);
 
         cvui::checkbox("Recognize gestures", &setts->should_recognizeGestures);
-        cvui::space(2);
-
-        cvui::checkbox("Auto adjust dist change", &setts->should_adjustDstCh);
         cvui::space(5);
         cvui::endColumn();
 
@@ -125,6 +129,10 @@ namespace GUI {
             key = 'h';
         if (cvui::button("Flip vertically (v)"))
             key = 'v';
+        if (cvui::button("Adjust dist change (a)"))
+            key = 'a';
+        if (cvui::button("Adjust gesture speed (d)"))
+            key = 'd';
         cvui::endColumn();
 
         cvui::update();
