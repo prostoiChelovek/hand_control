@@ -17,7 +17,7 @@ endif ()
 
 set(SOURCE_FILES main.cpp)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-sign-compare -Wno-narrowing")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-sign-compare -Wno-narrowing -Wno-unknown-pragmas")
 
 add_executable(mouseControl main.cpp SystemInteraction.hpp cvui.h GUI.hpp Settings.hpp)
 

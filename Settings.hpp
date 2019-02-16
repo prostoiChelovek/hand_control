@@ -47,6 +47,7 @@ struct Settings {
     bool should_controlMouse;
     bool should_click;
     bool should_recognizeGestures;
+    bool should_adjustDstCh;
 
     map<GestureDir, string> gstCmds;
 };

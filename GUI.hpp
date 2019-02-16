@@ -108,6 +108,9 @@ namespace GUI {
         cvui::space(2);
 
         cvui::checkbox("Recognize gestures", &setts->should_recognizeGestures);
+        cvui::space(2);
+
+        cvui::checkbox("Auto adjust dist change", &setts->should_adjustDstCh);
         cvui::space(5);
         cvui::endColumn();
 

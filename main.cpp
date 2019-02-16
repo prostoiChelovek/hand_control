@@ -2,6 +2,7 @@
 // Created by prostoichelovek on 07.02.19.
 //
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <future>
@@ -17,6 +18,8 @@
 
 #include "GUI.hpp"
 #define CVUI_IMPLEMENTATION
+
+#include "cvui.h"
 
 using namespace std;
 using namespace cv;
@@ -49,6 +52,8 @@ Settings setts = {
         should_controlMouse: false,
         should_click: false,
         should_recognizeGestures: false,
+        should_adjustDstCh: false,
+
 
         gstCmds: map<GestureDir, string>{
                 {RIGHT, "xdotool key Right"},
@@ -80,7 +85,7 @@ static void adjustBox_cb(int event, int x, int y, int, void *) {
 }
 
 // https://gist.github.com/royshil/1449e22993e98414e9eb
-void SimplestCB(Mat &in, Mat &out, float percent) {
+void ColorBalance(Mat &in, Mat &out, float percent) {
     assert(in.channels() == 3);
     assert(percent > 0 && percent < 100);
 
@@ -106,6 +111,55 @@ void SimplestCB(Mat &in, Mat &out, float percent) {
     merge(tmpsplit, out);
 }
 
+void flipImg(Mat &img) {
+    if (setts.should_flipVert)
+        flip(img, img, 0);
+    if (setts.should_flipHor)
+        flip(img, img, 1);
+}
+
+void autoAdjDstCh(vector<int> &dists) {
+    vector<vector<int>> seqs;
+    for (auto d = dists.begin() + 2; d < dists.end(); d++) {
+        if (*d >= -6 && *d <= 10) {
+            seqs.emplace_back(vector<int>{});
+            continue;
+        }
+        if (!seqs.empty())
+            seqs[seqs.size() - 1].emplace_back(*d);
+    }
+    vector<int> posMaxs, posMins, negMaxs, negMins;
+    for (vector<int> &seq : seqs) {
+        if (seq.empty()) {
+            seqs.erase(remove(seqs.begin(), seqs.end(), seq), seqs.end());
+            continue;
+        }
+
+        int maxEl = *max_element(seq.begin(), seq.end());
+        int minEl = *min_element(seq.begin(), seq.end());
+        if (seq[0] > 0) {
+            posMaxs.emplace_back(maxEl);
+            posMins.emplace_back(minEl);
+        } else {
+            negMaxs.emplace_back(minEl);
+            negMins.emplace_back(maxEl);
+        }
+    }
+
+    int posMaxAvg = accumulate(posMaxs.begin(), posMaxs.end(), 0.0) / posMaxs.size();
+    int posMinAvg = accumulate(posMins.begin(), posMins.end(), 0.0) / posMins.size();
+    int negMaxAvg = accumulate(negMaxs.begin(), negMaxs.end(), 0.0) / negMaxs.size();
+    int negMinAvg = accumulate(negMins.begin(), negMins.end(), 0.0) / negMins.size();
+    setts.press_minDistChange = posMinAvg;
+    setts.press_maxDistChange = posMaxAvg;
+    setts.release_minDistChange = abs(negMinAvg);
+    setts.release_maxDistChange = abs(negMaxAvg);
+    cout << posMaxAvg << " " << posMinAvg << endl;
+    cout << negMaxAvg << " " << negMinAvg << endl;
+    dists.clear();
+    setts.should_adjustDstCh = false;
+}
+
 void processGesture(GestureDir gd) {
     if (setts.gstCmds.count(gd) == 1) {
         system((setts.gstCmds[gd] + " &").c_str());
@@ -125,24 +179,26 @@ void processGesture(GestureDir gd) {
             cout << "Down" << endl;
             break;
     };
-
 }
 
-void flipImg(Mat &img) {
-    if (setts.should_flipVert)
-        flip(img, img, 0);
-    if (setts.should_flipHor)
-        flip(img, img, 1);
-}
+int main(int argc, char **argv) {
+    int capDev = 0;
 
-int main() {
-    VideoCapture cap(0);
+    if (argc > 1)
+        capDev = stoi(argv[1]);
+
+    VideoCapture cap(capDev);
     if (!cap.isOpened()) {
-        cerr << "Unable to open video capture" << endl;
+        cerr << "Unable to open video capture on " << capDev << endl;
         return EXIT_FAILURE;
     }
 
     SysInter::init();
+
+    GUI::init(&setts);
+    GUI::adjustColorRanges("mask");
+    namedWindow("img");
+    setMouseCallback("img", adjustBox_cb);
 
     HandDetector hd;
 
@@ -158,19 +214,14 @@ int main() {
     if (faceCascade.empty())
         cerr << "Could not load face cascade " << setts.faceCascadePath << endl;
 
-    GUI::init(&setts);
-
     Mat frame, img, img2, mask, imgYCrCb;
-
-    GUI::adjustColorRanges("mask");
-    namedWindow("img");
-    setMouseCallback("img", adjustBox_cb);
 
     int lastDist = 0;
     int mRightFrs = 0;
     int mLeftFrs = 0;
     int mTopFrs = 0;
     int mDownFrs = 0;
+    vector<int> dists;
     time_t lastGstTime = time(nullptr);
 
     Filter kf(4, 2, Scalar::all(10), Scalar::all(10), Scalar::all(.3));
@@ -186,7 +237,7 @@ int main() {
         cap >> frame;
 
         if (setts.should_colorBalance)
-            SimplestCB(frame, frame, 10);
+            ColorBalance(frame, frame, 10);
 
         flipImg(frame);
         frame.copyTo(img);
@@ -230,10 +281,10 @@ int main() {
                 }
             }
 
+            vector<float> pr = kf.predict();
+            int vX = pr[2];
+            int vY = pr[3];
             if (setts.should_recognizeGestures) {
-                vector<float> pr = kf.predict();
-                int vX = pr[2];
-                int vY = pr[3];
                 if (vX > setts.gesture_minDistChange) {
                     mRightFrs++;
                 } else if (-vX > setts.gesture_minDistChange) {
@@ -255,6 +306,9 @@ int main() {
                 if (setts.should_click) {
                     int dist = (h->border.x + h->border.width) - p->x;
                     int distChange = lastDist - dist;
+                    if (setts.should_adjustDstCh)
+                        dists.emplace_back(distChange);
+
                     if (distChange >= setts.press_minDistChange && distChange <= setts.press_maxDistChange) {
                         SysInter::mouseClick(Button1, true);
                     }
@@ -296,12 +350,17 @@ int main() {
 
         hd.updateLast();
 
+        if (dists.size() > 200) {
+            autoAdjDstCh(dists);
+        }
+
         if (bgs_learnNFrames > 0)
             bgs_learnNFrames--;
         else if (bgs_learn) {
             bgs_learn = false;
             cout << "Background learned" << endl;
         }
+
         if (key == -1)
             key = waitKey(1);
         if (key != -1) {
@@ -316,31 +375,35 @@ int main() {
                     break;
                 case 'm':
                     setts.should_controlMouse = !setts.should_controlMouse;
-                    cout << "should " << (setts.should_controlMouse ? "" : "not ") << "control mouse" << endl;
+                    cout << "control mouse: " << setts.should_controlMouse << endl;
                     break;
                 case 'c':
                     setts.should_click = !setts.should_click;
-                    cout << "should " << (setts.should_click ? "" : "not ") << "click" << endl;
-                    break;
-                case 'v':
-                    setts.should_flipVert = !setts.should_flipVert;
-                    cout << "should " << (setts.should_flipVert ? "" : "not ") << "flip vertically" << endl;
-                    break;
-                case 'h':
-                    setts.should_flipHor = !setts.should_flipHor;
-                    cout << "should " << (setts.should_flipHor ? "" : "not ") << "flip horizontally" << endl;
-                    break;
-                case 'o':
-                    setts.should_adjustBox = !setts.should_adjustBox;
-                    cout << "should " << (setts.should_adjustBox ? "" : "not ") << "adjust box" << endl;
-                    break;
-                case 'l':
-                    setts.should_colorBalance = !setts.should_colorBalance;
-                    cout << "should " << (setts.should_colorBalance ? "" : "not ") << "color balance" << endl;
+                    cout << "click: " << setts.should_click << endl;
                     break;
                 case 'g':
                     setts.should_recognizeGestures = !setts.should_recognizeGestures;
-                    cout << "should " << (setts.should_recognizeGestures ? "" : "not ") << "recognize gestures" << endl;
+                    cout << "Recognize gestures: " << setts.should_recognizeGestures << endl;
+                    break;
+                case 'v':
+                    setts.should_flipVert = !setts.should_flipVert;
+                    cout << "Flip vertically: " << setts.should_flipVert << endl;
+                    break;
+                case 'h':
+                    setts.should_flipHor = !setts.should_flipHor;
+                    cout << "Flip horizontally: " << setts.should_flipHor << endl;
+                    break;
+                case 'o':
+                    setts.should_adjustBox = !setts.should_adjustBox;
+                    cout << "Adjust box: " << setts.should_adjustBox << endl;
+                    break;
+                case 'l':
+                    setts.should_colorBalance = !setts.should_colorBalance;
+                    cout << "Color balance: " << setts.should_colorBalance << endl;
+                    break;
+                case 'a':
+                    setts.should_adjustDstCh = !setts.should_adjustDstCh;
+                    cout << "Auto adjust click dist change: " << setts.should_adjustDstCh << endl;
                     break;
                 default:
                     cout << "Key presed: " << key << endl;
