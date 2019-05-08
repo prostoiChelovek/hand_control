@@ -73,15 +73,15 @@ bool mbtnDown = false;
 static void adjustBox_cb(int event, int x, int y, int, void *) {
     if (!setts.should_adjustBox) return;
     switch (event) {
-        case CV_EVENT_LBUTTONDOWN:
+        case EVENT_LBUTTONDOWN:
             box.x = x;
             box.y = y;
             mbtnDown = true;
             break;
-        case CV_EVENT_LBUTTONUP:
+        case EVENT_LBUTTONUP:
             mbtnDown = false;
             break;
-        case CV_EVENT_MOUSEMOVE:
+        case EVENT_MOUSEMOVE:
             if (!mbtnDown) break;
             box.width = x;
             box.height = y;
@@ -102,7 +102,7 @@ void ColorBalance(Mat &in, Mat &out, float percent) {
         //find the low and high precentile values (based on the input percentile)
         Mat flat;
         tmpsplit[i].reshape(1, 1).copyTo(flat);
-        cv::sort(flat, flat, CV_SORT_EVERY_ROW + CV_SORT_ASCENDING);
+        cv::sort(flat, flat, SORT_EVERY_ROW + SORT_ASCENDING);
         int lowval = flat.at<uchar>(cvFloor(((float) flat.cols) * half_percent));
         int highval = flat.at<uchar>(cvCeil(((float) flat.cols) * (1.0 - half_percent)));
 
@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
             vector<Rect> faces;
             faceCascade.detectMultiScale(img, faces, 1.1, 2, 0 | CASCADE_SCALE_IMAGE, setts.minFaceSize);
             for (Rect &f : faces) {
-                rectangle(img, Rect(f.x, f.y, f.width, img.rows - f.y), Scalar(0, 0, 0), CV_FILLED);
+                rectangle(img, Rect(f.x, f.y, f.width, img.rows - f.y), Scalar(0, 0, 0), FILLED);
             }
         }
 

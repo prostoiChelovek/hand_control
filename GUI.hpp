@@ -28,7 +28,7 @@ namespace GUI {
     void init(Settings *setts_) {
         setts = setts_;
 
-        namedWindow(settingsWName, CV_WINDOW_AUTOSIZE);
+        namedWindow(settingsWName);
         cvui::init(settingsWName);
     }
 
